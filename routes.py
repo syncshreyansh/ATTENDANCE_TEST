@@ -11,7 +11,7 @@ import numpy as np
 import os
 import logging
 import re
-from auth_service import admin_required
+from auth_service import admin_required, token_required
 from config import Config
 
 # Configure logging
@@ -34,6 +34,8 @@ def validate_name(name):
     """Validate name - only alphabets and spaces"""
     if not name or not re.match(r'^[A-Za-z\s]+$', name):
         return False, "Name must contain only alphabets and spaces"
+    if len(name.strip()) < 2:
+        return False, "Name must be at least 2 characters"
     return True, ""
 
 def validate_phone(phone):
@@ -53,18 +55,28 @@ def validate_student_id(student_id):
     """Validate student ID - alphanumeric"""
     if not student_id or not re.match(r'^[A-Za-z0-9]+$', student_id):
         return False, "Student ID must be alphanumeric"
+    if len(student_id) < 3:
+        return False, "Student ID must be at least 3 characters"
     return True, ""
 
 @api.route('/admin-dashboard')
-def dashboard():
+@token_required
+def dashboard(current_user):
     """Serve main dashboard"""
+    if current_user.role != 'admin':
+        return jsonify({'message': 'Access denied'}), 403
     return render_template('dashboard.html')
 
 @api.route('/api/students', methods=['GET', 'POST'])
-def students():
+@token_required
+def students(current_user):
     """Student CRUD operations with enhanced validation"""
     if request.method == 'GET':
         try:
+            # Only admins can see all students
+            if current_user.role != 'admin':
+                return jsonify({'success': False, 'message': 'Access denied'}), 403
+            
             students = Student.query.filter_by(status='active').all()
             return jsonify([{
                 'id': s.id,
@@ -81,6 +93,10 @@ def students():
             
     elif request.method == 'POST':
         try:
+            # Only admins can create students
+            if current_user.role != 'admin':
+                return jsonify({'success': False, 'message': 'Access denied'}), 403
+            
             data = request.json
             
             # Validate required fields
@@ -154,7 +170,8 @@ def students():
             }), 500
 
 @api.route('/api/attendance', methods=['GET', 'POST'])
-def attendance():
+@token_required
+def attendance(current_user):
     """Attendance operations"""
     if request.method == 'GET':
         try:
@@ -164,7 +181,16 @@ def attendance():
             else:
                 date_filter = datetime.now(IST).date()
             
-            attendances = Attendance.query.filter_by(date=date_filter).all()
+            # Filter by student if not admin
+            if current_user.role == 'student':
+                if not current_user.student_id:
+                    return jsonify({'success': False, 'message': 'Student ID not found'}), 400
+                attendances = Attendance.query.filter_by(
+                    date=date_filter, 
+                    student_id=current_user.student_id
+                ).all()
+            else:
+                attendances = Attendance.query.filter_by(date=date_filter).all()
             
             return jsonify([{
                 'id': a.id,
@@ -196,9 +222,14 @@ def attendance():
             return jsonify({'success': False, 'message': str(e)}), 500
 
 @api.route('/api/stats')
-def stats():
+@token_required
+def stats(current_user):
     """Get attendance statistics"""
     try:
+        # Only admins see overall stats
+        if current_user.role != 'admin':
+            return jsonify({'success': False, 'message': 'Access denied'}), 403
+        
         stats_data = attendance_service.get_attendance_stats()
         return jsonify(stats_data)
     except Exception as e:
@@ -211,7 +242,8 @@ def stats():
         })
 
 @api.route('/api/leaderboard')
-def leaderboard():
+@token_required
+def leaderboard(current_user):
     """Get top students by points"""
     try:
         top_students = Student.query.filter_by(status='active').order_by(
@@ -229,8 +261,9 @@ def leaderboard():
         return jsonify([])
 
 @api.route('/api/alerts')
-def alerts():
-    """Get recent alerts"""
+@admin_required
+def alerts(current_user):
+    """Get recent alerts (admin only)"""
     try:
         recent_alerts = Alert.query.order_by(
             Alert.timestamp.desc()
@@ -248,8 +281,9 @@ def alerts():
         return jsonify([])
 
 @api.route('/api/activity-logs')
-def activity_logs():
-    """Get recent suspicious activity logs"""
+@admin_required
+def activity_logs(current_user):
+    """Get recent suspicious activity logs (admin only)"""
     try:
         logs = ActivityLog.query.order_by(
             ActivityLog.timestamp.desc()
@@ -269,8 +303,9 @@ def activity_logs():
         return jsonify([])
 
 @api.route('/api/enroll', methods=['POST'])
-def enroll_face():
-    """Enroll student face encoding with duplicate prevention"""
+@admin_required
+def enroll_face(current_user):
+    """Enroll student face encoding with duplicate prevention (admin only)"""
     logger.info("=" * 60)
     logger.info("ENROLLMENT ENDPOINT HIT")
     logger.info("=" * 60)
@@ -394,7 +429,8 @@ def enroll_face():
         }), 500
 
 @api.route('/api/recognize', methods=['POST'])
-def recognize():
+@token_required
+def recognize(current_user):
     """Process recognition request"""
     try:
         data = request.json

@@ -2,7 +2,7 @@
 Student-specific API routes
 Provides attendance data and analytics for individual students
 """
-from flask import Blueprint, jsonify, render_template
+from flask import Blueprint, jsonify, render_template, request
 from auth_service import token_required
 from models import db, Student, Attendance
 from datetime import datetime, timedelta, date
@@ -103,10 +103,31 @@ def get_student_attendance(current_user, student_id):
         if not student:
             return jsonify({'success': False, 'message': 'Student not found'}), 404
         
-        # Get attendance records (recent 30 days by default)
-        records = Attendance.query.filter_by(
-            student_id=student.id
-        ).order_by(Attendance.date.desc()).limit(30).all()
+        # Check if month/year filters are provided
+        month = request.args.get('month', type=int)
+        year = request.args.get('year', type=int)
+        
+        query = Attendance.query.filter_by(student_id=student.id)
+        
+        if month and year:
+            # Filter by specific month and year
+            start_date = date(year, month, 1)
+            if month == 12:
+                end_date = date(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                end_date = date(year, month + 1, 1) - timedelta(days=1)
+            
+            query = query.filter(
+                and_(
+                    Attendance.date >= start_date,
+                    Attendance.date <= end_date
+                )
+            )
+        else:
+            # Default: recent 30 days
+            query = query.limit(30)
+        
+        records = query.order_by(Attendance.date.desc()).all()
         
         return jsonify({
             'success': True,
@@ -138,9 +159,12 @@ def get_student_trend(current_user, student_id):
         if not student:
             return jsonify({'success': False, 'message': 'Student not found'}), 404
         
-        # Get last 30 days
+        # Get days parameter (default 30)
+        days = request.args.get('days', 30, type=int)
+        
+        # Get last N days
         end_date = date.today()
-        start_date = end_date - timedelta(days=29)
+        start_date = end_date - timedelta(days=days-1)
         
         # Query attendance for date range
         records = Attendance.query.filter(

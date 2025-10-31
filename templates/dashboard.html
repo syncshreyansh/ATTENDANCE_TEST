@@ -38,6 +38,9 @@
               <div class="status-dot offline" id="statusDot"></div>
               <span id="statusText">Offline</span>
             </div>
+            <button id="logoutBtn" class="liquid-button">
+              <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
           </div>
         </div>
       </header>
@@ -149,29 +152,32 @@
           <div class="modal-right-panel">
             <form id="enrollForm">
               <div class="form-group">
-                <label for="studentName">Student Name</label>
+                <label for="studentName">Student Name <span style="color: red;">*</span></label>
                 <input
                   type="text"
                   id="studentName"
                   class="form-input"
-                  placeholder="Enter full name"
+                  placeholder="Enter full name (alphabets only)"
                   required
+                  pattern="[A-Za-z\s]+"
+                  title="Only alphabets and spaces allowed"
                 />
               </div>
 
               <div class="form-group">
-                <label for="studentId">Student ID</label>
+                <label for="studentId">Student ID <span style="color: red;">*</span></label>
                 <input
                   type="text"
                   id="studentId"
                   class="form-input"
                   placeholder="Enter student ID"
                   required
+                  minlength="3"
                 />
               </div>
 
               <div class="form-group">
-                <label for="studentClass">Class</label>
+                <label for="studentClass">Class <span style="color: red;">*</span></label>
                 <input
                   type="text"
                   id="studentClass"
@@ -182,7 +188,7 @@
               </div>
 
               <div class="form-group">
-                <label for="studentSection">Section</label>
+                <label for="studentSection">Section <span style="color: red;">*</span></label>
                 <input
                   type="text"
                   id="studentSection"
@@ -193,12 +199,17 @@
               </div>
 
               <div class="form-group">
-                <label for="parentPhone">Parent Phone (Optional)</label>
+                <label for="parentPhone">Parent Phone <span style="color: red;">*</span></label>
                 <input
                   type="tel"
                   id="parentPhone"
                   class="form-input"
-                  placeholder="e.g., +1234567890"
+                  placeholder="Enter 10-15 digit phone number"
+                  required
+                  pattern="[0-9]{10,15}"
+                  title="Phone number must be 10-15 digits only"
+                  minlength="10"
+                  maxlength="15"
                 />
               </div>
 
