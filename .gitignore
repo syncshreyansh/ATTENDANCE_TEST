@@ -1,0 +1,9 @@
+# Ignore the entire virtual environment
+venv/
+
+# Ignore large .dat model files
+*.dat
+
+# A good practice for Python projects
+__pycache__/
+*.pyc
