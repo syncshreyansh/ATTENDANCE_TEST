@@ -91,16 +91,28 @@ class AttendanceService:
             date_filter = self.get_current_date()
             
         total_students = Student.query.filter_by(status='active').count()
-        present_today = Attendance.query.filter_by(
+        
+        # FIXED: Count distinct students who are present today (not all attendance records)
+        # This prevents counting duplicate records that might exist
+        present_today = db.session.query(Attendance.student_id).filter_by(
             date=date_filter,
             status='present'
-        ).count()
+        ).distinct().count()
+        
+        # FIXED: Ensure absent_today is never negative
+        absent_today = max(0, total_students - present_today)
+        
+        # FIXED: Calculate attendance rate and cap at 100% to prevent impossible values
+        if total_students > 0:
+            attendance_rate = min((present_today / total_students * 100), 100.0)
+        else:
+            attendance_rate = 0
         
         return {
             'total_students': total_students,
             'present_today': present_today,
-            'absent_today': total_students - present_today,
-            'attendance_rate': (present_today / total_students * 100) if total_students > 0 else 0
+            'absent_today': absent_today,
+            'attendance_rate': attendance_rate
         }
 
     def update_absence_tracker(self, student_id, is_present=True):
