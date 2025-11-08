@@ -1,6 +1,20 @@
-
 /* FIXED: Font Awesome Loading */
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css');
+
+/* CRITICAL: Override any conflicting styles for feed controls */
+.camera-feed-placeholder .feed-controls {
+  position: absolute !important;
+  bottom: 20px !important;
+  right: 20px !important;
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+  justify-content: flex-end !important;
+  margin: 0 !important;
+  display: flex !important;
+  gap: 12px !important;
+  z-index: 10 !important;
+}
 
 /* FIXED: Status Indicator - Remove unusual icons */
 .status-light {
@@ -10,7 +24,7 @@
     position: absolute;
     top: 16px;
     left: 16px;
-    background-color: rgba(0, 0, 0, 0.8); /* More opaque */
+    background-color: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(10px);
     padding: 8px 14px;
     border-radius: 8px;
@@ -299,6 +313,60 @@ i.fa, i.fas, i.far, i.fab {
         left: 10px;
         min-width: auto;
     }
+
+    /* CRITICAL: Keep buttons at bottom right on mobile */
+    .camera-feed-placeholder .feed-controls {
+        position: absolute !important;
+        bottom: 16px !important;
+        right: 16px !important;
+        left: auto !important;
+        top: auto !important;
+        transform: none !important;
+        flex-direction: row !important;
+    }
 }
 
+@media (max-width: 500px) {
+    /* Stack buttons vertically only on very small screens */
+    .camera-feed-placeholder .feed-controls {
+        flex-direction: column !important;
+        bottom: 16px !important;
+        right: 16px !important;
+        left: auto !important;
+    }
+    
+    .feed-controls .btn {
+        width: 110px;
+    }
+}
 
+/* Additional safeguards to prevent centering */
+.left-column .camera-feed-placeholder {
+    position: relative;
+}
+
+.left-column .camera-feed-placeholder > * {
+    /* Ensure child elements don't interfere with button positioning */
+}
+
+/* Force feed controls positioning - highest priority */
+body .dashboard-container .main-content .left-column .camera-feed-placeholder .feed-controls {
+    position: absolute !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    margin: 0 !important;
+}
+
+/* Prevent any flex centering on parent */
+.camera-feed-placeholder {
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+/* But keep controls positioned absolutely */
+.camera-feed-placeholder .feed-controls {
+    position: absolute !important;
+}
