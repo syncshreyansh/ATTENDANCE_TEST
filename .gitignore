@@ -1,9 +1,14 @@
-# Ignore the entire virtual environment
-venv/
+# Untrack the venv folder
+git rm -r --cached venv/
 
-# Ignore large .dat model files
-*.dat
+# Untrack the .vscode folder (editor settings)
+git rm -r --cached .vscode/
 
-# A good practice for Python projects
-__pycache__/
-*.pyc
+# Untrack the instance folder (often holds local databases)
+git rm -r --cached instance/
+
+# Untrack any __pycache__ directories that got added
+git rm -r --cached **/__pycache__/
+
+# Untrack any .dat files (if they are large models)
+git rm -r --cached **/*.dat
