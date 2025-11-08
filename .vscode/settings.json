@@ -1,6 +1,0 @@
-{
-    "python.defaultInterpreterPath": ".\\venv\\Scripts\\python.exe",
-    "python.linting.pylintPath": ".\\venv\\Scripts\\pylint.exe",
-    "python.linting.pylintEnabled": true,
-    "python.linting.enabled": true
-}
