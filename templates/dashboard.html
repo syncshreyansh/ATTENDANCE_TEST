@@ -182,6 +182,217 @@
             gap: 16px;
         }
 
+        .search-wrapper {
+            position: relative;
+            min-width: 260px;
+        }
+
+        .search-wrapper input {
+            width: 100%;
+            padding: 10px 42px 10px 14px;
+            border-radius: 6px;
+            border: 1px solid rgba(0, 224, 240, 0.35);
+            background: rgba(24, 24, 24, 0.85);
+            color: var(--color-text-primary);
+            font-size: 14px;
+            transition: box-shadow 0.2s ease, border 0.2s ease;
+        }
+
+        .search-wrapper input::placeholder {
+            color: var(--color-text-secondary);
+        }
+
+        .search-wrapper input:focus {
+            outline: none;
+            border-color: rgba(0, 224, 240, 0.6);
+            box-shadow: 0 0 0 3px rgba(0, 224, 240, 0.15);
+        }
+
+        .search-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            width: 100%;
+            background: rgba(16, 16, 16, 0.96);
+            border-radius: 10px;
+            border: 1px solid rgba(0, 224, 240, 0.2);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+            overflow: hidden;
+            z-index: 25;
+            max-height: 320px;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+        }
+
+        .search-dropdown::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .search-dropdown::-webkit-scrollbar-thumb {
+            background: rgba(0, 224, 240, 0.4);
+            border-radius: 3px;
+        }
+
+        .search-result-item {
+            padding: 12px 14px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .search-result-item:hover {
+            background: rgba(0, 224, 240, 0.12);
+        }
+
+        .search-result-name {
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .search-result-meta {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .search-result-empty {
+            padding: 12px 14px;
+            color: var(--color-text-secondary);
+            font-size: 13px;
+        }
+
+        .student-stats-panel {
+            position: fixed;
+            top: 100px;
+            right: 40px;
+            width: 360px;
+            background: rgba(16, 16, 16, 0.95);
+            border-radius: 18px;
+            border: 1px solid rgba(0, 224, 240, 0.25);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(14px);
+            z-index: 60;
+            overflow: hidden;
+            animation: fadeInUp 0.2s ease-out;
+        }
+
+        .student-stats-panel .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 20px 24px 12px;
+            background: linear-gradient(135deg, rgba(0, 224, 240, 0.08), transparent);
+        }
+
+        .student-stats-panel .panel-title h2 {
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+
+        .student-stats-panel .panel-title p {
+            color: var(--color-text-secondary);
+            font-size: 13px;
+            margin-bottom: 2px;
+        }
+
+        .student-stats-panel .panel-subtitle {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            color: rgba(0, 224, 240, 0.8);
+        }
+
+        .student-stats-panel .close-panel {
+            background: rgba(255, 255, 255, 0.04);
+            border: none;
+            color: var(--color-text-primary);
+            font-size: 16px;
+            line-height: 1;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .student-stats-panel .close-panel:hover {
+            background: rgba(0, 224, 240, 0.12);
+            color: var(--color-accent);
+        }
+
+        .student-stats-panel .panel-body {
+            padding: 20px 24px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .panel-student-meta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .panel-student-meta img {
+            width: 72px;
+            height: 72px;
+            object-fit: cover;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 224, 240, 0.3);
+        }
+
+        .panel-points {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .panel-points strong {
+            font-size: 22px;
+            color: var(--color-text-primary);
+        }
+
+        .panel-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .panel-stat {
+            background: rgba(24, 24, 24, 0.85);
+            border: 1px solid rgba(0, 224, 240, 0.15);
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .panel-stat-label {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .panel-stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         /* --- Main Dashboard Layout --- */
         .dashboard-container {
             position: relative;
@@ -771,6 +982,22 @@
                 gap: 16px;
                 padding: 20px;
             }
+            .header-controls {
+                width: 100%;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+            }
+            .search-wrapper {
+                min-width: 0;
+                width: 100%;
+            }
+            .student-stats-panel {
+                top: 120px;
+                right: 20px;
+                left: 20px;
+                width: auto;
+            }
             .dashboard-container {
                 padding: 20px;
             }
@@ -817,6 +1044,15 @@
             .header-controls {
                 flex-wrap: wrap;
                 justify-content: center;
+                gap: 10px;
+            }
+            .search-wrapper {
+                width: 100%;
+            }
+            .student-stats-panel {
+                top: 100px;
+                left: 16px;
+                right: 16px;
             }
             .feed-controls {
                 flex-direction: column;
@@ -839,6 +1075,10 @@
     <header class="main-header">
         <h1 class="logo-title">LIVE RECOGNITION</h1>
         <div class="header-controls">
+            <div class="search-wrapper">
+                <input type="text" id="student-search" placeholder="🔍 Search student..." aria-label="Search students">
+                <div id="search-results" class="search-dropdown"></div>
+            </div>
             <button class="btn btn-primary" id="enroll-btn">
                 <i class="fa-solid fa-user-plus"></i> Enroll Student
             </button>

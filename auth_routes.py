@@ -4,6 +4,11 @@ Handles login, registration, and token management
 """
 from flask import Blueprint, request, jsonify, render_template
 from auth_service import AuthService, token_required, admin_required, User
+from config import Config
+from models import db, OTPToken, Student, get_ist_now
+from whatsapp_service import WhatsAppService
+from datetime import timedelta
+import random
 import logging
 
 logger = logging.getLogger(__name__)
@@ -163,6 +168,126 @@ def change_password(current_user):
             'success': False,
             'message': f'Password change failed: {str(e)}'
         }), 500
+
+@auth_bp.route('/api/auth/request-reset-otp', methods=['POST'])
+def request_reset_otp():
+    """Request OTP for password reset"""
+    try:
+        data = request.json or {}
+        username = data.get('username')
+
+        if not username:
+            return jsonify({'success': False, 'message': 'Username required'}), 400
+
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            # Do not reveal user existence
+            return jsonify({'success': True, 'message': 'If account exists, OTP sent'}), 200
+
+        now = get_ist_now()
+        last_otp = OTPToken.query.filter_by(
+            user_id=user.id
+        ).order_by(OTPToken.created_at.desc()).first()
+
+        if last_otp:
+            elapsed = (now - last_otp.created_at).total_seconds()
+            if elapsed < Config.OTP_RESEND_COOLDOWN_SEC:
+                return jsonify({
+                    'success': False,
+                    'message': f"Please wait {int(Config.OTP_RESEND_COOLDOWN_SEC - elapsed)}s before requesting again"
+                }), 429
+
+        otp_code = f"{random.randint(0, 999999):06d}"
+        expires_at = now + timedelta(minutes=Config.OTP_EXP_MINUTES)
+
+        otp_token = OTPToken(
+            user_id=user.id,
+            code=otp_code,
+            expires_at=expires_at
+        )
+        db.session.add(otp_token)
+        db.session.commit()
+
+        phone = None
+        if user.student_id:
+            student = Student.query.get(user.student_id)
+            if student:
+                phone = student.parent_phone
+
+        if phone:
+            whatsapp = WhatsAppService()
+            whatsapp.send_otp(phone, otp_code)
+
+        return jsonify({
+            'success': True,
+            'message': 'OTP sent to registered phone'
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"OTP request failed: {e}")
+        return jsonify({'success': False, 'message': 'Failed to send OTP'}), 500
+
+@auth_bp.route('/api/auth/verify-reset-otp', methods=['POST'])
+def verify_reset_otp():
+    """Verify OTP code"""
+    try:
+        data = request.json or {}
+        username = data.get('username')
+        code = data.get('code')
+
+        if not username or not code:
+            return jsonify({'success': False, 'message': 'Username and code required'}), 400
+
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+
+        otp = OTPToken.query.filter_by(
+            user_id=user.id,
+            code=code,
+            used=False
+        ).order_by(OTPToken.created_at.desc()).first()
+
+        if not otp:
+            return jsonify({'success': False, 'message': 'Invalid OTP'}), 401
+
+        now = get_ist_now()
+        if now > otp.expires_at:
+            return jsonify({'success': False, 'message': 'OTP expired'}), 401
+
+        otp.used = True
+        db.session.commit()
+
+        reset_token = user.generate_token(expires_in=Config.OTP_EXP_MINUTES * 60)
+        return jsonify({
+            'success': True,
+            'message': 'OTP verified',
+            'reset_token': reset_token
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"OTP verification failed: {e}")
+        return jsonify({'success': False, 'message': 'Failed to verify OTP'}), 500
+
+@auth_bp.route('/api/auth/reset-password', methods=['POST'])
+@token_required
+def reset_password(current_user):
+    """Reset password after OTP verification"""
+    try:
+        data = request.json or {}
+        new_password = data.get('new_password')
+
+        if not new_password or len(new_password) < 6:
+            return jsonify({'success': False, 'message': 'Password must be 6+ characters'}), 400
+
+        current_user.set_password(new_password)
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': 'Password reset successful'}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Password reset failed: {e}")
+        return jsonify({'success': False, 'message': 'Failed to reset password'}), 500
 
 @auth_bp.route('/api/auth/users', methods=['GET'])
 @admin_required

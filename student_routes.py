@@ -159,6 +159,61 @@ def get_student_attendance(current_user, student_id):
         logger.error(f"Error fetching attendance: {e}")
         return jsonify({'success': False, 'message': 'Failed to fetch attendance'}), 500
 
+@student_bp.route('/api/student-attendance-month/<int:student_id>')
+@token_required
+def get_student_attendance_month(current_user, student_id):
+    """Get present and absent dates for a month"""
+    try:
+        if current_user.role == 'student' and current_user.student_id != student_id:
+            return jsonify({'success': False, 'message': 'Access denied'}), 403
+
+        student = Student.query.get(student_id)
+        if not student:
+            return jsonify({'success': False, 'message': 'Student not found'}), 404
+
+        month = request.args.get('month', type=int)
+        year = request.args.get('year', type=int)
+
+        if not month or not year:
+            today = date.today()
+            month, year = today.month, today.year
+
+        start_date = date(year, month, 1)
+        if month == 12:
+            end_date = date(year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = date(year, month + 1, 1) - timedelta(days=1)
+
+        records = Attendance.query.filter(
+            and_(
+                Attendance.student_id == student.id,
+                Attendance.date >= start_date,
+                Attendance.date <= end_date
+            )
+        ).all()
+
+        present_dates = [r.date.isoformat() for r in records if r.status == 'present']
+
+        absent_dates = []
+        current = start_date
+        today_date = date.today()
+
+        while current <= min(end_date, today_date):
+            if current.weekday() < 5:
+                date_str = current.isoformat()
+                if date_str not in present_dates:
+                    absent_dates.append(date_str)
+            current += timedelta(days=1)
+
+        return jsonify({
+            'success': True,
+            'present_dates': present_dates,
+            'absent_dates': absent_dates
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching monthly attendance: {e}")
+        return jsonify({'success': False, 'message': 'Failed to fetch monthly attendance'}), 500
+
 @student_bp.route('/api/student-trend/<int:student_id>')
 @token_required
 def get_student_trend(current_user, student_id):

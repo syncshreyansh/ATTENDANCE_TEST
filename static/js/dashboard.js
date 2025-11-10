@@ -101,6 +101,11 @@ class AttendanceDashboard {
     this.frameIndicator = document.getElementById('frameIndicator');
     this.captureProgress = document.getElementById('captureProgress');
     this.frameCount = document.getElementById('frameCount');
+    this.searchInput = document.getElementById('student-search');
+    this.searchResults = document.getElementById('search-results');
+    this.searchTimeout = null;
+    this.studentStatsPanel = null;
+    this.boundPanelKeydownHandler = null;
     
     this.isCapturing = false;
     this.capturedFrames = [];
@@ -169,6 +174,10 @@ class AttendanceDashboard {
     
     this.socket.on("system_started", () => this.updateSystemStatus(true));
     this.socket.on("system_stopped", () => this.updateSystemStatus(false));
+
+    if (this.searchInput && this.searchResults) {
+      this.initializeStudentSearch();
+    }
   }
 
   handleActivityUpdate(data) {
@@ -200,6 +209,197 @@ class AttendanceDashboard {
       }
     }
   }
+
+  initializeStudentSearch() {
+    this.searchInput.addEventListener('input', (event) => {
+      const query = event.target.value.trim();
+      clearTimeout(this.searchTimeout);
+
+      if (query.length < 2) {
+        this.hideSearchResults();
+        return;
+      }
+
+      this.searchTimeout = setTimeout(() => {
+        this.performStudentSearch(query);
+      }, 300);
+    });
+
+    this.searchResults.addEventListener('click', (event) => {
+      const item = event.target.closest('.search-result-item');
+      if (!item) {
+        return;
+      }
+      const studentId = item.dataset.studentId;
+      if (studentId) {
+        this.openStudentPanel(studentId);
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!this.searchResults.contains(event.target) && event.target !== this.searchInput) {
+        this.hideSearchResults();
+      }
+    });
+  }
+
+  async performStudentSearch(query) {
+    try {
+      this.searchResults.style.display = 'block';
+      this.searchResults.innerHTML = `<div class="search-result-empty">Searching…</div>`;
+
+      const response = await fetch(`/api/admin/search-students?q=${encodeURIComponent(query)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+
+      const data = await response.json();
+      this.renderSearchResults(data.students || []);
+    } catch (error) {
+      console.error('Student search failed:', error);
+      this.searchResults.innerHTML = `<div class="search-result-empty">Unable to search right now</div>`;
+    }
+  }
+
+  renderSearchResults(students) {
+    if (!students.length) {
+      this.searchResults.innerHTML = `<div class="search-result-empty">No matches found</div>`;
+      this.searchResults.style.display = 'block';
+      return;
+    }
+
+    this.searchResults.innerHTML = students.map((student) => {
+      const section = student.section ? `-${student.section}` : '';
+      return `
+        <div class="search-result-item" data-student-id="${student.id}">
+          <div class="search-result-name">${student.name}</div>
+          <div class="search-result-meta">${student.student_id} • ${student.class_name}${section}</div>
+        </div>
+      `;
+    }).join('');
+
+    this.searchResults.style.display = 'block';
+  }
+
+  hideSearchResults() {
+    if (this.searchResults) {
+      this.searchResults.style.display = 'none';
+      this.searchResults.innerHTML = '';
+    }
+  }
+
+  async openStudentPanel(studentId) {
+    this.hideSearchResults();
+    if (this.searchInput) {
+      this.searchInput.value = '';
+    }
+
+    try {
+      const response = await fetch(`/api/admin/student-stats/${studentId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load student details');
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to load student details');
+      }
+
+      this.showStudentStatsPanel(data);
+    } catch (error) {
+      console.error('Load student stats failed:', error);
+      this.showNotification(error.message || 'Failed to load student stats', 'error');
+    }
+  }
+
+  showStudentStatsPanel(data) {
+    if (this.studentStatsPanel) {
+      this.studentStatsPanel.remove();
+    }
+
+    const student = data.student || {};
+    const stats = data.stats || {};
+    const panel = document.createElement('div');
+    panel.className = 'student-stats-panel';
+
+    const sectionLabel = student.section ? `${student.class_name}-${student.section}` : student.class_name || 'N/A';
+
+    const details = [
+      { label: 'Present Days', value: stats.days_present ?? 0 },
+      { label: 'Absent Days', value: stats.days_absent ?? 0 },
+      { label: 'Attendance Rate', value: stats.attendance_rate != null ? `${stats.attendance_rate}%` : '—' },
+      { label: 'Current Streak', value: stats.streak != null ? `${stats.streak} days` : '—' },
+      { label: 'First Seen', value: this.formatDateTime(stats.first_seen) },
+      { label: 'Last Seen', value: this.formatDateTime(stats.last_seen) }
+    ];
+
+    panel.innerHTML = `
+      <div class="panel-header">
+        <div class="panel-title">
+          <h2>${student.name || 'Student'}</h2>
+          <p>${sectionLabel}</p>
+          <span class="panel-subtitle">${student.student_id || ''}</span>
+        </div>
+        <button class="close-panel" type="button" data-close-panel aria-label="Close student panel">✕</button>
+      </div>
+      <div class="panel-body">
+        <div class="panel-student-meta">
+          ${student.image_path ? `<img src="/${student.image_path}" alt="${student.name}" onerror="this.style.display='none'">` : ''}
+          <div>
+            <div class="panel-points"><span>Points</span> <strong>${student.points ?? 0}</strong></div>
+          </div>
+        </div>
+        <div class="panel-stats-grid">
+          ${details.map(detail => `
+            <div class="panel-stat">
+              <span class="panel-stat-label">${detail.label}</span>
+              <span class="panel-stat-value">${detail.value}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    panel.querySelector('[data-close-panel]').addEventListener('click', () => this.closeStudentPanel());
+    document.body.appendChild(panel);
+    this.studentStatsPanel = panel;
+
+    this.boundPanelKeydownHandler = (event) => {
+      if (event.key === 'Escape') {
+        this.closeStudentPanel();
+      }
+    };
+    document.addEventListener('keydown', this.boundPanelKeydownHandler);
+  }
+
+  closeStudentPanel() {
+    if (this.studentStatsPanel) {
+      this.studentStatsPanel.remove();
+      this.studentStatsPanel = null;
+    }
+    if (this.boundPanelKeydownHandler) {
+      document.removeEventListener('keydown', this.boundPanelKeydownHandler);
+      this.boundPanelKeydownHandler = null;
+    }
+  }
+
+  formatDateTime(isoString) {
+    if (!isoString) {
+      return '—';
+    }
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) {
+      return '—';
+    }
+    return date.toLocaleString();
+  }
+
 
   handleRecognitionStatus(data) {
     const now = Date.now();

@@ -30,12 +30,12 @@ class User(db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
     
-    def generate_token(self):
+    def generate_token(self, expires_in=None):
         payload = {
             'user_id': self.id,
             'username': self.username,
             'role': self.role,
-            'exp': datetime.utcnow() + timedelta(seconds=JWT_EXP_DELTA_SECONDS)
+            'exp': datetime.utcnow() + timedelta(seconds=expires_in or JWT_EXP_DELTA_SECONDS)
         }
         token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
         return token

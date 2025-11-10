@@ -782,47 +782,51 @@
         async function loadCalendar() {
             const calendarEl = document.getElementById('calendar');
             const today = new Date();
-            const currentMonth = today.getMonth();
-            const currentYear = today.getFullYear();
-            const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-            
-            const response = await fetch(`/api/student-attendance/${user.student_id}?month=${currentMonth + 1}&year=${currentYear}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            if (!response.ok) {
-                 console.error('Failed to load calendar data');
-                 return;
-            }
-            const data = await response.json();
-            const attendanceMap = {};
-            
-            if (data.attendance) {
-                data.attendance.forEach(record => {
-                    const date = new Date(record.date);
-                    const dayOfMonth = date.getUTCDate();
-                    attendanceMap[dayOfMonth] = record.status;
+            const month = today.getMonth() + 1;
+            const year = today.getFullYear();
+            const daysInMonth = new Date(year, month, 0).getDate();
+
+            try {
+                const response = await fetch(`/api/student-attendance-month/${user.student_id}?month=${month}&year=${year}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
                 });
-            }
-            
-            calendarEl.innerHTML = '';
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dayEl = document.createElement('div');
-                dayEl.className = 'calendar-day';
-                dayEl.textContent = day;
-                
-                if (attendanceMap[day] === 'present') {
-                    dayEl.classList.add('present');
-                } else if (attendanceMap[day] === 'absent') {
-                    dayEl.classList.add('absent');
+
+                if (!response.ok) {
+                    throw new Error('Failed to load calendar data');
                 }
-                
-                if (day === today.getDate()) {
-                    dayEl.classList.add('today');
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error(data.message || 'Failed to load calendar data');
                 }
-                
-                calendarEl.appendChild(dayEl);
+
+                const presentDates = new Set(data.present_dates || []);
+                const absentDates = new Set(data.absent_dates || []);
+
+                calendarEl.innerHTML = '';
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const dayEl = document.createElement('div');
+                    dayEl.className = 'calendar-day';
+                    dayEl.textContent = day;
+
+                    if (presentDates.has(dateStr)) {
+                        dayEl.classList.add('present');
+                    } else if (absentDates.has(dateStr)) {
+                        dayEl.classList.add('absent');
+                    }
+
+                    if (day === today.getDate()) {
+                        dayEl.classList.add('today');
+                    }
+
+                    calendarEl.appendChild(dayEl);
+                }
+            } catch (error) {
+                console.error('Failed to load calendar data', error);
+                calendarEl.innerHTML = '<p style="color: var(--color-text-secondary); font-size: 14px;">Unable to load calendar.</p>';
             }
         }
         

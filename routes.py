@@ -2,7 +2,7 @@
 from flask import Blueprint, request, jsonify, render_template
 from datetime import datetime, date
 import pytz
-from models import db, Student, Attendance, Alert, ActivityLog, get_ist_now
+from models import db, Student, Attendance, Alert, ActivityLog, get_ist_now, CoordinatorScope
 from attendance_service import AttendanceService
 from face_recognition_service import FaceRecognitionService
 import base64
@@ -11,7 +11,16 @@ import numpy as np
 import os
 import logging
 import re
-from auth_service import admin_required, token_required
+from auth_service import (
+    admin_required,
+    token_required,
+    coordinator_or_admin_required,
+    get_user_scope,
+    AuthService,
+)
+from student_routes import calculate_attendance_streak
+from whatsapp_service import WhatsAppService
+from sqlalchemy import func, distinct
 from config import Config
 
 # Configure logging
@@ -70,15 +79,20 @@ def dashboard():
 # API ROUTES (TOKEN REQUIRED)
 # ============================================
 @api.route('/api/students', methods=['GET', 'POST'])
-@token_required
+@coordinator_or_admin_required
 def students(current_user):
     """Student CRUD operations with enhanced validation"""
     if request.method == 'GET':
         try:
-            if current_user.role != 'admin':
-                return jsonify({'success': False, 'message': 'Access denied'}), 403
-            
-            students = Student.query.filter_by(status='active').all()
+            class_name, section = get_user_scope(current_user)
+            query = Student.query.filter_by(status='active')
+
+            if class_name:
+                query = query.filter_by(class_name=class_name)
+                if section:
+                    query = query.filter_by(section=section)
+
+            students = query.all()
             return jsonify([{
                 'id': s.id,
                 'name': s.name,
@@ -161,6 +175,171 @@ def students(current_user):
                 'success': False,
                 'message': f'Error creating student: {str(e)}'
             }), 500
+
+@api.route('/api/admin/search-students')
+@admin_required
+def search_students(current_user):
+    """Search students by name or student_id (admin only)"""
+    query = request.args.get('q', '').strip()
+
+    if not query:
+        return jsonify({'success': True, 'students': []}), 200
+
+    try:
+        base_query = Student.query.filter_by(status='active')
+        if query.isdigit():
+            students = base_query.filter(
+                Student.student_id.ilike(f"%{query}%")
+            ).limit(25).all()
+        else:
+            students = base_query.filter(
+                Student.name.ilike(f"%{query}%")
+            ).limit(25).all()
+
+        return jsonify({
+            'success': True,
+            'students': [{
+                'id': s.id,
+                'name': s.name,
+                'student_id': s.student_id,
+                'class_name': s.class_name,
+                'section': s.section
+            } for s in students]
+        }), 200
+    except Exception as e:
+        logger.error(f"Student search failed: {e}")
+        return jsonify({'success': False, 'message': 'Search failed'}), 500
+
+@api.route('/api/admin/student-stats/<int:student_db_id>')
+@admin_required
+def get_admin_student_stats(current_user, student_db_id):
+    """Get detailed stats for a specific student (admin view)"""
+    student = Student.query.get(student_db_id)
+    if not student:
+        return jsonify({'success': False, 'message': 'Student not found'}), 404
+
+    try:
+        total_days = db.session.query(
+            func.count(distinct(Attendance.date))
+        ).filter(Attendance.student_id == student.id).scalar() or 0
+
+        days_present = db.session.query(
+            func.count(distinct(Attendance.date))
+        ).filter(
+            Attendance.student_id == student.id,
+            Attendance.status == 'present'
+        ).scalar() or 0
+
+        days_absent = total_days - days_present
+        attendance_rate = round((days_present / total_days * 100) if total_days > 0 else 0)
+        streak = calculate_attendance_streak(student.id)
+
+        first_attendance = Attendance.query.filter_by(
+            student_id=student.id
+        ).order_by(Attendance.date.asc()).first()
+
+        last_attendance = Attendance.query.filter_by(
+            student_id=student.id
+        ).order_by(Attendance.date.desc()).first()
+
+        return jsonify({
+            'success': True,
+            'student': {
+                'name': student.name,
+                'student_id': student.student_id,
+                'class_name': student.class_name,
+                'section': student.section,
+                'points': student.points,
+                'image_path': student.image_path
+            },
+            'stats': {
+                'total_days': total_days,
+                'days_present': days_present,
+                'days_absent': days_absent,
+                'attendance_rate': attendance_rate,
+                'streak': streak,
+                'first_seen': first_attendance.date.isoformat() if first_attendance else None,
+                'last_seen': (
+                    last_attendance.time_in.isoformat() if last_attendance and last_attendance.time_in else
+                    last_attendance.date.isoformat() if last_attendance else None
+                )
+            }
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching student stats: {e}")
+        return jsonify({'success': False, 'message': 'Failed to fetch stats'}), 500
+
+@api.route('/api/admin/coordinators', methods=['POST'])
+@admin_required
+def create_coordinator(current_user):
+    """Create a new coordinator (admin only)"""
+    data = request.json or {}
+
+    required = ['username', 'email', 'password', 'class_name']
+    for field in required:
+        if not data.get(field):
+            return jsonify({'success': False, 'message': f'Missing {field}'}), 400
+
+    try:
+        result = AuthService.register_user(
+            username=data['username'],
+            email=data['email'],
+            password=data['password'],
+            role='coordinator'
+        )
+
+        if not result['success']:
+            return jsonify(result), 400
+
+        section = data.get('section')
+        scope = CoordinatorScope(
+            user_id=result['user_id'],
+            class_name=data['class_name'].strip(),
+            section=section.strip() if isinstance(section, str) and section.strip() else None
+        )
+
+        db.session.add(scope)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f"Coordinator created for {data['class_name']}"
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Coordinator creation failed: {e}")
+        return jsonify({'success': False, 'message': 'Failed to create coordinator'}), 500
+
+@api.route('/api/test-whatsapp', methods=['POST'])
+@admin_required
+def test_whatsapp(current_user):
+    """Test WhatsApp service (admin only)"""
+    data = request.json or {}
+    to_phone = data.get('to')
+    message = data.get('message', 'Test message from Smart Attendance System')
+
+    if not to_phone:
+        return jsonify({'success': False, 'message': 'Phone number required'}), 400
+
+    try:
+        whatsapp = WhatsAppService()
+        success = whatsapp.send_message(to_phone, message)
+
+        if Config.WHATSAPP_DRY_RUN:
+            return jsonify({
+                'success': True,
+                'message': 'DRY_RUN mode: Message logged (not sent)',
+                'dry_run': True
+            }), 200
+
+        return jsonify({
+            'success': success,
+            'message': 'Message sent' if success else 'Failed to send',
+            'dry_run': False
+        }), 200 if success else 500
+    except Exception as e:
+        logger.error(f"WhatsApp test failed: {e}")
+        return jsonify({'success': False, 'message': 'WhatsApp send failed'}), 500
 
 @api.route('/api/attendance', methods=['GET', 'POST'])
 @token_required
