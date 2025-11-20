@@ -416,6 +416,9 @@ class AttendanceDashboard {
       case 'clear':
         this.showOverlay(null);
         break;
+      case 'waiting_blink':
+        this.showOverlay(data.message || '👤 Please BLINK', 'recognizing', 10000);
+        break;
       case 'obstructed':
         this.showOverlay('⚠️ Camera is obstructed - Please remove obstruction', 'error', 10000);
         break;

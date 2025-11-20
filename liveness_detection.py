@@ -220,16 +220,16 @@ class LivenessDetector:
             right_ear = self.calculate_ear(right_eye)
             ear = (left_ear + right_ear) / 2.0
             
-            # FIXED: More lenient blink scoring
-            if ear < 0.23:
+            # CRITICAL: Strict blink scoring - must detect complete blink
+            if ear < 0.21:  # Eyes closing
                 self.blink_counter += 1
-                verification_scores['blink'] = 0.9
+                verification_scores['blink'] = 0.3  # Partial credit
             else:
-                if self.blink_counter >= 1:
+                if self.blink_counter >= 2:  # Must detect at least 2 frames of closed eyes
                     self.total_blinks += 1
-                    verification_scores['blink'] = 1.0
-                elif ear < 0.28:
-                    verification_scores['blink'] = 0.7
+                    verification_scores['blink'] = 1.0  # Full credit
+                else:
+                    verification_scores['blink'] = 0.0  # No credit
                 self.blink_counter = 0
             
             if verification_scores['blink'] < 1.0:
@@ -275,11 +275,12 @@ class LivenessDetector:
             texture_score = verification_scores['texture']
             head_pose_score = verification_scores['head_pose']
             
-            confidence = (blink_score * 0.3 +
-                          texture_score * 0.4 +
-                          head_pose_score * 0.3)
+            # CRITICAL: Require BOTH blink AND texture to pass
+            confidence = (blink_score * 0.4 +
+                          texture_score * 0.5 +
+                          head_pose_score * 0.1)
             
-            is_live = confidence >= 0.5
+            is_live = (confidence >= 0.7 and blink_score >= 0.8)  # Strict requirements
             
             details = {
                 'blink_detected': verification_scores['blink'] >= 0.7,

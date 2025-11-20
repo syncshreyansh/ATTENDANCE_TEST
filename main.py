@@ -144,7 +144,14 @@ class EnhancedCameraService:
                     'message': message
                 }
             
-            if status in ['verifying_gaze', 'verifying_blink']:
+            if status == 'waiting_blink':
+                return {
+                    'status': 'waiting_blink',
+                    'message': message,
+                    'student_name': data.get('student_name')
+                }
+            
+            if status in ['verifying_gaze', 'verifying_blink', 'verifying']:
                 return {
                     'status': 'verifying',
                     'message': message

@@ -315,8 +315,8 @@ def check(frame, face_bbox, face_encoding=None):
                 }
             }
         
-        # CRITICAL: IMMEDIATE rejection for phone detection - LOWER threshold
-        if phone_conf > 0.65:
+        # CRITICAL: IMMEDIATE rejection for phone detection - MUCH STRICTER
+        if phone_conf > 0.35:  # Changed from 0.65 to 0.35 for aggressive blocking
             logger.critical(f"🚨 PHONE DETECTED: conf={phone_conf:.2f}, bbox={phone_bbox}")
             return {
                 'is_spoof': True,
@@ -387,8 +387,8 @@ def check(frame, face_bbox, face_encoding=None):
             spoof_types.append("very_low_texture")
             S = max(S, 0.7)  # Force high spoof confidence
         
-        # CRITICAL: Lower decision threshold for aggressive blocking
-        is_spoof = S >= 0.55
+        # CRITICAL: STRICTER decision threshold for aggressive blocking
+        is_spoof = S >= 0.40  # Changed from 0.55 to 0.40 for more sensitive detection
         spoof_type = spoof_types if spoof_types else None
         
         evidence = {

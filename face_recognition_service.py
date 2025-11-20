@@ -293,12 +293,22 @@ class FaceRecognitionService:
                 logger.info(f"📊 Liveness results: is_live={is_live}, conf={liveness_conf:.2f}, "
                           f"blink={blink_verified}, eye_contact={eye_contact_verified}, texture={texture_valid}")
                 
-                # CRITICAL: Enforce mandatory blink before proceeding
+                # CRITICAL: Show "Please Blink" prompt BEFORE checking blink
+                if blink_score < 0.5:
+                    logger.info(f"⏳ Waiting for blink from {student_name}")
+                    result = ('waiting_blink', f'👤 {student_name} - Please BLINK to continue', {
+                        'student_name': student_name,
+                        'blink_score': blink_score
+                    })
+                    self.last_state_result = result
+                    return result
+                
+                # Now check if blink is complete
                 if blink_score < 1.0:
                     logger.warning(f"❌ Blink verification failed for {student_name}: score={blink_score}")
                     self._log_activity('no_blink_detected', 
                                      f'{student_name} - NO BLINK DETECTED')
-                    result = ('error', '❌ Please BLINK CLEARLY to verify you are real', {})
+                    result = ('error', '❌ Blink NOT detected - Please try again', {})
                     self.last_state_result = result
                     return result
                 

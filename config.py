@@ -48,14 +48,14 @@ class Config:
     
     # Anti-Spoofing Settings - CRITICAL: Aggressive blocking
     AUTO_BLOCK_SPOOF = True
-    SPOOF_CONFIDENCE_THRESHOLD_FLAG = 0.40
-    SPOOF_CONFIDENCE_THRESHOLD_BLOCK = 0.45
+    SPOOF_CONFIDENCE_THRESHOLD_FLAG = 0.30
+    SPOOF_CONFIDENCE_THRESHOLD_BLOCK = 0.35
     
     # CRITICAL: Prioritize phone/texture detection
-    SPOOF_WEIGHT_CNN = 0.25
-    SPOOF_WEIGHT_TEXTURE = 0.30
-    SPOOF_WEIGHT_PHONE = 0.30
-    SPOOF_WEIGHT_MOIRE = 0.10
+    SPOOF_WEIGHT_CNN = 0.20
+    SPOOF_WEIGHT_TEXTURE = 0.25
+    SPOOF_WEIGHT_PHONE = 0.45  # Increased from 0.30 to prioritize phone detection
+    SPOOF_WEIGHT_MOIRE = 0.08
     SPOOF_WEIGHT_REFLECTION = 0.03
     SPOOF_WEIGHT_BLINK = 0.02
     
