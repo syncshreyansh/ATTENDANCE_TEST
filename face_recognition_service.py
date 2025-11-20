@@ -53,6 +53,10 @@ class FaceRecognitionService:
         from liveness_detection import LivenessDetector
         self.liveness_detector = LivenessDetector()
         logger.info("✓ Liveness detector initialized")
+        
+        # Multi-frame verification buffer
+        self.verification_frames = []
+        self.required_consecutive_frames = 3
 
     def _ensure_loaded(self):
         """Lazy loading of face encodings with error handling"""
@@ -288,8 +292,17 @@ class FaceRecognitionService:
                 logger.info(f"📊 Liveness results: is_live={is_live}, conf={liveness_conf:.2f}, "
                           f"blink={blink_verified}, eye_contact={eye_contact_verified}, texture={texture_valid}")
                 
-                # FIXED: Stricter liveness threshold
-                if not is_live or liveness_conf < 0.5:  # Lowered from 0.6 to 0.5
+                # Enforce mandatory blink before proceeding
+                if not blink_verified:
+                    logger.warning(f"❌ No blink detected for {student_name}")
+                    self._log_activity('no_blink_detected', 
+                                     f'{student_name} failed - no blink detected')
+                    result = ('error', '❌ Please blink to verify you are real', {})
+                    self.last_state_result = result
+                    return result
+                
+                # Stricter liveness threshold
+                if not is_live or liveness_conf < 0.6:
                     logger.warning(f"❌ Liveness check FAILED for {student_name}: conf={liveness_conf:.2f}")
                     self._log_activity('liveness_failed', 
                                      f'{student_name} failed liveness check (conf={liveness_conf:.2f}, '
@@ -341,15 +354,16 @@ class FaceRecognitionService:
                     # Log to database
                     self._log_spoof_activity(student_id, student_name, spoof_type, spoof_conf, evidence)
                     
-                    # FIXED: Lower threshold for blocking
-                    auto_block = getattr(Config, 'AUTO_BLOCK_SPOOF', False)
+                    # Aggressive blocking with stricter threshold
+                    auto_block = getattr(Config, 'AUTO_BLOCK_SPOOF', True)
                     
-                    if spoof_conf >= 0.65 or auto_block:  # Lowered from 0.85 to 0.65
+                    if spoof_conf >= 0.55 or auto_block:
                         result = ('spoof_blocked', f'🚫 Spoofing attempt detected: {spoof_type}', {
                             'student_id': student_id,
                             'student_name': student_name,
                             'spoof_type': spoof_type,
                             'confidence': spoof_conf,
+                            'spoof_confidence': spoof_conf,
                             'status': 'blocked',
                             'evidence': evidence
                         })
@@ -380,6 +394,40 @@ class FaceRecognitionService:
             
             # === ALL CHECKS PASSED ===
             logger.info(f"🎉 All security checks passed for {student_name}")
+            
+            # Multi-frame verification to prevent quick spoofing
+            current_ts = time.time()
+            self.verification_frames.append({
+                'timestamp': current_ts,
+                'student_id': student_id,
+                'liveness_conf': liveness_conf,
+                'spoof_conf': spoof_result['confidence']
+            })
+            
+            cutoff_time = current_ts - 2
+            self.verification_frames = [
+                frame for frame in self.verification_frames
+                if frame['timestamp'] > cutoff_time
+            ]
+            
+            recent_frames = self.verification_frames[-5:]
+            consecutive_count = sum(
+                1 for frame in recent_frames
+                if frame['student_id'] == student_id
+                and frame['liveness_conf'] >= 0.6
+                and frame['spoof_conf'] < 0.4
+            )
+            
+            if consecutive_count < self.required_consecutive_frames:
+                logger.info(f"Verification: {consecutive_count}/{self.required_consecutive_frames} frames for {student_name}")
+                result = ('verifying', f'Verifying... ({consecutive_count}/3 frames)', {
+                    'student_id': student_id,
+                    'progress': consecutive_count
+                })
+                self.last_state_result = result
+                return result
+            
+            self.verification_frames = []
             
             result = ('verified', None, {
                 'student_id': student_id,

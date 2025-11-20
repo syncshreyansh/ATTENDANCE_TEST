@@ -154,22 +154,25 @@ def run_cnn_classifier(face_roi):
         return 0.0, "cnn_error"
 
 def detect_phone_in_frame(frame, face_bbox):
-    """Detect phone/tablet near face using YOLO"""
+    """Detect phone/tablet near face using YOLO - ENHANCED"""
     model = load_yolo_model()
     if model is None:
-        return 0.0, None
+        return check_phone_via_edges(frame, face_bbox)
     
     try:
         results = model(frame, verbose=False)
         
         detections = results[0].boxes.data.cpu().numpy() if len(results) > 0 else []
+        logger.info(f"🔍 Phone detection: detections={len(detections)}, model_loaded={_yolo_model is not None}")
         
-        # Classes: 67=cell phone, 73=laptop (COCO dataset)
-        phone_classes = [67, 73]
+        # Classes: 67=cell phone, 73=laptop, 63=tv/monitor
+        phone_classes = [67, 73, 63]
         
         fx1, fy1, fx2, fy2 = face_bbox
         face_center_x = (fx1 + fx2) / 2
         face_center_y = (fy1 + fy2) / 2
+        face_area = (fx2 - fx1) * (fy2 - fy1)
+        frame_area = frame.shape[0] * frame.shape[1]
         
         best_conf = 0.0
         best_bbox = None
@@ -180,16 +183,75 @@ def detect_phone_in_frame(frame, face_bbox):
                 phone_center_x = (x1 + x2) / 2
                 phone_center_y = (y1 + y2) / 2
                 dist = np.sqrt((phone_center_x - face_center_x)**2 + (phone_center_y - face_center_y)**2)
+                phone_area = (x2 - x1) * (y2 - y1)
                 
-                # FIXED: Increase detection range from 300 to 400 pixels
-                if dist < 400 and conf > best_conf:
-                    best_conf = float(conf)
+                logger.info(f"📱 Found device: class={int(cls)}, conf={float(conf):.2f}, dist={dist:.1f}px")
+                
+                overlap_x = max(0, min(x2, fx2) - max(x1, fx1))
+                overlap_y = max(0, min(y2, fy2) - max(y1, fy1))
+                overlap_area = overlap_x * overlap_y
+                
+                if overlap_area > face_area * 0.3:
+                    return 0.95, [int(x1), int(y1), int(x2-x1), int(y2-y1)]
+                
+                if phone_area > frame_area * 0.15 and conf > 0.4:
+                    return min(float(conf) + 0.3, 0.99), [int(x1), int(y1), int(x2-x1), int(y2-y1)]
+                
+                if dist < 300 and conf > best_conf:
+                    best_conf = float(conf) + 0.2
                     best_bbox = [int(x1), int(y1), int(x2-x1), int(y2-y1)]
         
         return best_conf, best_bbox
     except Exception as e:
         logger.error(f"YOLO detection error: {e}")
+        return check_phone_via_edges(frame, face_bbox)
+
+def check_phone_via_edges(frame, face_bbox):
+    """Fallback: Detect phone screen by looking for rectangular edges"""
+    try:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 150)
+        
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        fx1, fy1, fx2, fy2 = face_bbox
+        face_area = (fx2 - fx1) * (fy2 - fy1)
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > face_area * 0.5:
+                x, y, w, h = cv2.boundingRect(contour)
+                aspect_ratio = w / float(h) if h > 0 else 0
+                
+                if 0.4 < aspect_ratio < 2.5 and area > 10000:
+                    return 0.7, [x, y, w, h]
+        
         return 0.0, None
+    except Exception as e:
+        logger.error(f"Edge-based phone detection error: {e}")
+        return 0.0, None
+
+def detect_screen_glare(face_roi):
+    """Detect bright rectangular glare typical of phone screens"""
+    try:
+        gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
+        _, bright_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        
+        contours, _ = cv2.findContours(bright_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 500:
+                x, y, w, h = cv2.boundingRect(contour)
+                aspect_ratio = w / float(h) if h > 0 else 0
+                
+                if 0.5 < aspect_ratio < 2.0:
+                    return 0.8
+        
+        return 0.0
+    except Exception as e:
+        logger.error(f"Screen glare detection error: {e}")
+        return 0.0
 
 def check(frame, face_bbox, face_encoding=None):
     """
@@ -212,10 +274,15 @@ def check(frame, face_bbox, face_encoding=None):
         # Run all available checks
         texture_var = calculate_laplacian_variance(face_roi)
         
-        # FIXED: Lower texture threshold from 50 to 40
-        texture_conf = 1.0 if texture_var < 40 else 0.0
+        # Stricter texture threshold
+        texture_conf = 1.0 if texture_var < 35 else 0.0
         
         moire_conf = calculate_fft_moire(face_roi)
+        
+        # Screen glare detection
+        glare_conf = detect_screen_glare(face_roi)
+        if glare_conf > 0.6:
+            logger.warning(f"Screen glare detected: {glare_conf:.2f}")
         
         reflection_conf = reflection_in_eyes_score(face_roi)
         reflection_spoof_conf = 1.0 - reflection_conf if reflection_conf < 0.3 else 0.0
@@ -229,20 +296,46 @@ def check(frame, face_bbox, face_encoding=None):
         
         blink_conf = 0.0
         
-        # FIXED: Adjusted weighted fusion score
+        # Emergency checks before fusion
+        if texture_var < 30:
+            return {
+                'is_spoof': True,
+                'spoof_type': ['very_low_texture_photo'],
+                'confidence': 0.95,
+                'evidence': {'texture_variance': texture_var, 'reason': 'texture_too_low'}
+            }
+        
+        # CRITICAL: IMMEDIATE rejection for phone detection
+        if phone_conf > 0.5:
+            logger.critical(f"🚨 PHONE DETECTED: conf={phone_conf:.2f}, bbox={phone_bbox}")
+            return {
+                'is_spoof': True,
+                'spoof_type': ['phone_screen_detected'],
+                'confidence': min(phone_conf + 0.2, 0.95),
+                'evidence': {
+                    'phone_confidence': phone_conf,
+                    'phone_bbox': phone_bbox,
+                    'detection_method': 'yolo' if _yolo_model else 'edge_detection',
+                    'reason': 'PHONE_IN_FRAME'
+                }
+            }
+        
+        # Adjusted weighted fusion score
         if _cnn_available:
-            S = (0.30 * cnn_conf +           # Increased from 0.25
-                 0.25 * texture_conf +       # Increased from 0.2
-                 0.20 * phone_conf +         # Same
-                 0.15 * moire_conf +         # Same
-                 0.05 * reflection_spoof_conf +  # Decreased from 0.1
-                 0.05 * (1 - blink_conf))    # Decreased from 0.1
+            S = (0.30 * cnn_conf +
+                 0.25 * texture_conf +
+                 0.25 * phone_conf +
+                 0.10 * moire_conf +
+                 0.05 * glare_conf +
+                 0.03 * reflection_spoof_conf +
+                 0.02 * (1 - blink_conf))
         else:
-            S = (0.40 * texture_conf +       # Increased from 0.35
-                 0.25 * phone_conf +         # Same
-                 0.20 * moire_conf +         # Same
-                 0.10 * reflection_spoof_conf +
-                 0.05 * (1 - blink_conf))
+            S = (0.35 * texture_conf +
+                 0.30 * phone_conf +
+                 0.15 * moire_conf +
+                 0.10 * glare_conf +
+                 0.08 * reflection_spoof_conf +
+                 0.02 * (1 - blink_conf))
         
         # Calculate reliability
         reliability = 1.0
@@ -272,8 +365,8 @@ def check(frame, face_bbox, face_encoding=None):
             spoof_types.append("very_low_texture")
             S = max(S, 0.7)  # Force high spoof confidence
         
-        # FIXED: Lower decision threshold from 0.7 to 0.55
-        is_spoof = S >= 0.55
+        # Lower decision threshold for stricter blocking
+        is_spoof = S >= 0.50
         spoof_type = spoof_types if spoof_types else None
         
         evidence = {
@@ -284,6 +377,7 @@ def check(frame, face_bbox, face_encoding=None):
             'cnn_type': cnn_type,
             'phone_detector_confidence': round(phone_conf, 2),
             'phone_bbox': phone_bbox,
+            'glare_confidence': round(glare_conf, 2),
             'fusion_score': round(S, 2),
             'reliability_score': round(reliability, 2),
             'cnn_enabled': _cnn_available,

@@ -152,15 +152,27 @@ class EnhancedCameraService:
             
             # Handle spoof detection results
             if status in ['spoof_blocked', 'spoof_flagged']:
-                # Broadcast to frontend
+                student_name = data.get('student_name', 'Unknown')
+                spoof_type = data.get('spoof_type', 'Unknown')
+                
+                from attendance_service import AttendanceService
+                service = AttendanceService()
+                service.log_spoofing_attempt(
+                    data.get('student_id'),
+                    student_name,
+                    spoof_type,
+                    data.get('spoof_confidence', 0)
+                )
+                
                 broadcast_spoof_event({
                     'timestamp': current_time,
                     'student_id': data.get('student_id'),
-                    'name': data.get('student_name'),
-                    'status': data.get('status'),
-                    'spoof_type': data.get('spoof_type'),
-                    'spoof_confidence': data.get('spoof_confidence', data.get('confidence')),
-                    'details': data.get('evidence')
+                    'name': student_name,
+                    'status': 'BLOCKED - SPOOFING ATTEMPT',
+                    'spoof_type': spoof_type,
+                    'spoof_confidence': data.get('spoof_confidence'),
+                    'details': f"Someone tried to mark attendance for {student_name} using {spoof_type}",
+                    'evidence': data.get('evidence')
                 })
                 
                 return {

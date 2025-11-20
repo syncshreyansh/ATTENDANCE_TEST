@@ -115,6 +115,32 @@ class AttendanceService:
             'attendance_rate': attendance_rate
         }
 
+    def log_spoofing_attempt(self, student_id, student_name, spoof_type, confidence):
+        """Log spoofing attempts with student info"""
+        try:
+            message = f"🚨 SPOOFING ATTEMPT: Someone tried to mark attendance for {student_name} using {spoof_type}"
+            
+            log = ActivityLog(
+                student_id=student_id,
+                name=student_name,
+                activity_type='spoofing_attempt',
+                message=message,
+                severity='critical',
+                spoof_type=spoof_type,
+                spoof_confidence=confidence
+            )
+            db.session.add(log)
+            db.session.commit()
+            
+            logger.critical(f"🚨 {message} (confidence={confidence:.2f})")
+            
+            # Optional: Send alert to admin
+            # self.whatsapp.send_message(Config.ADMIN_PHONE, message)
+            
+        except Exception as e:
+            logger.error(f"Failed to log spoofing attempt: {e}")
+            db.session.rollback()
+
     def update_absence_tracker(self, student_id, is_present=True):
         """
         Update absence tracker for a student

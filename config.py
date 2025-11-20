@@ -43,13 +43,13 @@ class Config:
     REQUIRED_BLINKS = 1
     EYE_CONTACT_THRESHOLD = 35
     REQUIRE_EYE_CONTACT = False
-    TEXTURE_QUALITY_THRESHOLD = 40  # FIXED: Lowered from 50 to 40
-    LIVENESS_CONFIDENCE_THRESHOLD = 0.5  # FIXED: Lowered from 0.6 to 0.5
+    TEXTURE_QUALITY_THRESHOLD = 35  # Stricter texture requirement
+    LIVENESS_CONFIDENCE_THRESHOLD = 0.6  # Stricter liveness confidence
     
     # Anti-Spoofing Settings - FIXED: Enable by default and lower thresholds
     AUTO_BLOCK_SPOOF = os.environ.get('AUTO_BLOCK_SPOOF', 'True').lower() == 'true'  # FIXED: Changed default to True
-    SPOOF_CONFIDENCE_THRESHOLD_FLAG = 0.55  # FIXED: Lowered from 0.7 to 0.55
-    SPOOF_CONFIDENCE_THRESHOLD_BLOCK = 0.65  # FIXED: Lowered from 0.85 to 0.65
+    SPOOF_CONFIDENCE_THRESHOLD_FLAG = 0.50
+    SPOOF_CONFIDENCE_THRESHOLD_BLOCK = 0.55
     
     # FIXED: Adjusted spoof weights for better balance
     SPOOF_WEIGHT_CNN = 0.30  # Increased from 0.25
@@ -69,6 +69,11 @@ class Config:
     WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID") or ""
     WHATSAPP_DRY_RUN = bool(int(os.environ.get("WHATSAPP_DRY_RUN", "1")))
     WHATSAPP_WEBHOOK_VERIFY_TOKEN = os.environ.get('WHATSAPP_WEBHOOK_VERIFY_TOKEN')
+    
+    if not os.path.exists(PHONE_DETECTOR_MODEL):
+        print(f"⚠️  CRITICAL: YOLO model missing at {PHONE_DETECTOR_MODEL}")
+        print("   Download: wget https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.pt -O models/yolov5n.pt")
+        print("   OR: pip install gdown && gdown 1Drs_Aiu7xx6S-ix95f9kNsA6ueKRpN2b -O models/yolov5n.pt")
     
     # OTP Settings
     OTP_EXP_MINUTES = int(os.environ.get("OTP_EXP_MINUTES", "10"))
